@@ -1,1 +1,130 @@
 #CODE RIDGE AND LASSO
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.linear_model import Ridge, Lasso
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import StandardScaler
+from google.colab import drive
+
+# بارگذاری داده‌ها و تقسیم آن به ویژگی‌ها و هدف
+drive.mount('/content/drive')
+df = pd.read_csv('/content/drive/MyDrive/Prostate Cancer (2).txt')
+
+# تبدیل به نوع عددی و تنظیم داده‌ها
+df.iloc[:, 1:-2] = df.iloc[:, 1:-2].apply(pd.to_numeric)
+df['train'] = df['train'].apply(lambda x: x == 'T')
+
+# تقسیم داده‌ها به آموزش و آزمون
+train_df = df[df['train'] == True]
+test_df = df[df['train'] == False]
+
+# آماده‌سازی ویژگی‌ها و هدف برای آموزش
+X_train = train_df[['lcavol', 'lweight', 'age', 'lbph', 'svi', 'lcp', 'gleason', 'pgg45']].values
+y_train = train_df['lpsa'].values.astype(float)
+X_test = test_df[['lcavol', 'lweight', 'age', 'lbph', 'svi', 'lcp', 'gleason', 'pgg45']].values
+y_test = test_df['lpsa'].values.astype(float)
+
+# استانداردسازی ویژگی‌ها
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# لیست مقادیر مختلف λ برای ارزیابی
+lambdas = np.logspace(-4, 4, 100)
+
+# لیست‌هایی برای ذخیره خطاهای تست برای هر مدل و ضرایب بتا
+ridge_errors = []
+lasso_errors = []
+ridge_betas = []
+lasso_betas = []
+
+# اجرای Ridge و Lasso برای هر λ و محاسبه خطای تست
+for l in lambdas:
+    # مدل Ridge
+    ridge_model = Ridge(alpha=l)
+    ridge_model.fit(X_train_scaled, y_train)
+    y_pred_ridge = ridge_model.predict(X_test_scaled)
+    ridge_errors.append(mean_squared_error(y_test, y_pred_ridge))
+    ridge_betas.append(ridge_model.coef_)
+
+    # مدل Lasso
+    lasso_model = Lasso(alpha=l, max_iter=10000)
+    lasso_model.fit(X_train_scaled, y_train)
+    y_pred_lasso = lasso_model.predict(X_test_scaled)
+    lasso_errors.append(mean_squared_error(y_test, y_pred_lasso))
+    lasso_betas.append(lasso_model.coef_)
+
+# پیدا کردن بهترین λ بر اساس کمترین خطا
+best_lambda_ridge = lambdas[np.argmin(ridge_errors)]
+best_lambda_lasso = lambdas[np.argmin(lasso_errors)]
+
+# استخراج ضرایب بتا برای بهترین λ
+best_ridge_model = Ridge(alpha=best_lambda_ridge)
+best_ridge_model.fit(X_train_scaled, y_train)
+best_ridge_betas = best_ridge_model.coef_
+
+best_lasso_model = Lasso(alpha=best_lambda_lasso, max_iter=10000)
+best_lasso_model.fit(X_train_scaled, y_train)
+best_lasso_betas = best_lasso_model.coef_
+
+# چاپ بهترین λ‌ها و خطاهای متناظر
+print(f"Best lambda for Ridge: {best_lambda_ridge}, Test Error: {min(ridge_errors)}")
+print(f"Best lambda for Lasso: {best_lambda_lasso}, Test Error: {min(lasso_errors)}")
+
+# چاپ ضرایب بتا
+print("\nRidge Coefficients at Best Lambda:")
+for i, beta in enumerate(best_ridge_betas):
+    print(f"Beta {i+1}: {beta}")
+
+print("\nLasso Coefficients at Best Lambda:")
+for i, beta in enumerate(best_lasso_betas):
+    print(f"Beta {i+1}: {beta}")
+
+# ایجاد DataFrame برای ذخیره MSE و ضرایب بتا
+ridge_betas_df = pd.DataFrame(ridge_betas, columns=[f'Beta {i+1}' for i in range(ridge_betas[0].shape[0])])
+ridge_betas_df['Lambda'] = lambdas
+ridge_betas_df['MSE'] = ridge_errors
+
+lasso_betas_df = pd.DataFrame(lasso_betas, columns=[f'Beta {i+1}' for i in range(lasso_betas[0].shape[0])])
+lasso_betas_df['Lambda'] = lambdas
+lasso_betas_df['MSE'] = lasso_errors
+
+# نمایش DataFrame برای Ridge
+print("\nRidge Weights and MSE:")
+print(ridge_betas_df)
+
+# نمایش DataFrame برای Lasso
+print("\nLasso Weights and MSE:")
+print(lasso_betas_df)
+
+# رسم نمودار خطای تست بر حسب λ برای Ridge و Lasso
+plt.figure(figsize=(12, 6))
+plt.plot(lambdas, ridge_errors, label="Ridge Test Error", color="blue")
+plt.plot(lambdas, lasso_errors, label="Lasso Test Error", color="red")
+plt.xscale("log")
+plt.yscale("log")
+plt.xlabel("Lambda (log scale)")
+plt.ylabel("Test Error (log scale)")
+plt.title("Test Error vs Lambda for Ridge and Lasso")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# رسم ضرایب بتا برای Ridge و Lasso
+ridge_betas = np.array(ridge_betas)
+lasso_betas = np.array(lasso_betas)
+
+plt.figure(figsize=(12, 6))
+for i in range(ridge_betas.shape[1]):
+    plt.plot(lambdas, ridge_betas[:, i], label=f'Ridge Beta {i+1}')
+for i in range(lasso_betas.shape[1]):
+    plt.plot(lambdas, lasso_betas[:, i], label=f'Lasso Beta {i+1}', linestyle='dashed')
+
+plt.xscale("log")
+plt.xlabel("Lambda (log scale)")
+plt.ylabel("Coefficients")
+plt.title("Ridge and Lasso Coefficients vs Lambda")
+plt.legend()
+plt.grid(True)
+plt.show()
